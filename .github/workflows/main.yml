@@ -36,7 +36,7 @@ jobs:
   
         - name: Wait before install
           run: |
-            delay=$((30 + RANDOM % 91))
+            delay=$((120 + RANDOM % 241))
             echo "Waiting ${delay} seconds..."
             sleep "$delay"
   
