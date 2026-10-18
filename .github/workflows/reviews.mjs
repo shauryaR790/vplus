@@ -1,7 +1,7 @@
 import { chromium } from 'playwright';
 import fs from 'fs';
 
-const accounts = JSON.parse(fs.readFileSync('accounts.json', 'utf8'));
+const accounts = JSON.parse(fs.readFileSync('.github/workflows/accounts.json', 'utf8'));
 
 const run = parseInt(process.env.RUN_NUMBER || '1', 10);
 const slot = parseInt(process.env.SLOT || '1', 10);
