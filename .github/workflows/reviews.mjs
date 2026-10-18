@@ -1,11 +1,9 @@
 import { chromium } from 'playwright';
 
 const accounts = [
-  { email: 'r1@yourdomain.com', password: 'Str0ngPass1!' },
-  { email: 'r2@yourdomain.com', password: 'Str0ngPass2!' },
-  { email: 'r3@yourdomain.com', password: 'Str0ngPass3!' },
-  { email: 'r4@yourdomain.com', password: 'Str0ngPass4!' },
-  { email: 'r5@yourdomain.com', password: 'Str0ngPass5!' },
+  { "email": "sureyeawh@gmail.com", "password": "shaurya2009" },
+  { "email": "rshaurya790@gmail.com", "password": "shaurya2009" },
+  { "email": "shauryaljku@gmail.com", "password": "shaurya2009" }
 ];
 
 const run = parseInt(process.env.RUN_NUMBER || '1', 10);
