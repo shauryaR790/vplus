@@ -1,12 +1,16 @@
 import { chromium } from 'playwright';
-import fs from 'fs';
 
-const accounts = JSON.parse(fs.readFileSync('.github/workflows/accounts.json', 'utf8'));
+const accounts = [
+  { email: 'r1@yourdomain.com', password: 'Str0ngPass1!' },
+  { email: 'r2@yourdomain.com', password: 'Str0ngPass2!' },
+  { email: 'r3@yourdomain.com', password: 'Str0ngPass3!' },
+  { email: 'r4@yourdomain.com', password: 'Str0ngPass4!' },
+  { email: 'r5@yourdomain.com', password: 'Str0ngPass5!' },
+];
 
 const run = parseInt(process.env.RUN_NUMBER || '1', 10);
 const slot = parseInt(process.env.SLOT || '1', 10);
 
-// slots 1,2,3 -> 4 stars ; slots 4,5 -> 5 stars
 const rating = slot <= 3 ? 4 : 5;
 
 const texts = {
@@ -26,48 +30,55 @@ const texts = {
   ]
 };
 
-// rotates through accounts every run so it "keeps altering"
 const acct = accounts[(run * 5 + slot) % accounts.length];
 const text = texts[rating][(run + slot) % 5];
 
 const url = 'https://marketplace.visualstudio.com/items?itemName=vpp-lang.vplusplus';
 
-const browser = await chromium.launch();
-const page = await browser.newPage();
+async function attempt() {
+  const browser = await chromium.launch();
+  const page = await browser.newPage();
+  try {
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
 
-try {
-  await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.getByRole('link', { name: /sign in/i }).first().click();
+    await page.waitForLoadState('domcontentloaded');
 
-  await page.getByRole('link', { name: /sign in/i }).first().click();
-  await page.waitForLoadState('domcontentloaded');
+    await page.fill('input[type="email"]', acct.email);
+    await page.click('input[type="submit"]');
+    await page.waitForTimeout(2500);
+    await page.fill('input[type="password"]', acct.password);
+    await page.click('input[type="submit"]');
+    await page.waitForTimeout(4000);
 
-  await page.fill('input[type="email"]', acct.email);
-  await page.click('input[type="submit"]');
-  await page.waitForTimeout(2500);
-  await page.fill('input[type="password"]', acct.password);
-  await page.click('input[type="submit"]');
-  await page.waitForTimeout(4000);
+    const yes = page.getByRole('button', { name: /^yes$/i });
+    if (await yes.count()) await yes.first().click();
+    await page.waitForTimeout(3000);
 
-  const yes = page.getByRole('button', { name: /^yes$/i });
-  if (await yes.count()) await yes.first().click();
-  await page.waitForTimeout(3000);
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
 
-  await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.locator(`[aria-label*="${rating} star" i]`).first().click();
+    await page.waitForTimeout(1000);
 
-  // click the star rating
-  await page.locator(`[aria-label*="${rating} star" i]`).first().click();
-  await page.waitForTimeout(1000);
+    const box = page.locator('textarea').first();
+    await box.fill(text);
+    await page.getByRole('button', { name: /submit|post/i }).first().click();
+    await page.waitForTimeout(2000);
 
-  // type the review and submit (selector may need tweaking)
-  const box = page.locator('textarea').first();
-  await box.fill(text);
-  await page.getByRole('button', { name: /submit|post/i }).first().click();
-  await page.waitForTimeout(2000);
-
-  console.log(`OK: ${acct.email} -> ${rating} stars`);
-} catch (e) {
-  console.error('FAIL', acct.email, e.message);
-  process.exitCode = 1;
-} finally {
-  await browser.close();
+    console.log(`OK: ${acct.email} -> ${rating} stars`);
+  } finally {
+    await browser.close();
+  }
 }
+
+let ok = false;
+for (let n = 1; n <= 3 && !ok; n++) {
+  try {
+    await attempt();
+    ok = true;
+  } catch (e) {
+    console.error(`attempt ${n} failed:`, e.message);
+    await new Promise(r => setTimeout(r, 5000));
+  }
+}
+if (!ok) process.exit(1);
