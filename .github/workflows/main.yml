@@ -76,4 +76,4 @@ jobs:
         env:
           RUN_NUMBER: ${{ github.run_number }}
           SLOT: ${{ matrix.r }}
-        run: node scripts/review.mjs
+        run: node .github/workflows/reviews.mjs
