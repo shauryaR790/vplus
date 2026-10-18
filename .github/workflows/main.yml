@@ -1,14 +1,18 @@
 name: boost
 
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: boost
+  cancel-in-progress: false
 
 jobs:
   install:
     runs-on: ubuntu-latest
-
     strategy:
       fail-fast: false
-      max-parallel: 10
+      max-parallel: 20          # 170 jobs / 20 = ~9 waves -> ~15 min, safely under 30
       matrix:
         i: [1,2,3,4,5,6,7,8,9,10,
             11,12,13,14,15,16,17,18,19,20,
@@ -28,24 +32,48 @@ jobs:
             151,152,153,154,155,156,157,158,159,160,
             161,162,163,164,165,166,167,168,169,170]
     steps:
-        - name: Get VS Code
-          run: |
-            curl -fsSL 'https://update.code.visualstudio.com/latest/linux-x64/stable' -o vscode.tar.gz
-            tar -xzf vscode.tar.gz
-            ls -la VSCode-linux-x64/bin/
-  
-        - name: Wait before install
-          run: |
-            delay=$((20 + RANDOM % 71))
-            echo "Waiting ${delay} seconds..."
-            sleep "$delay"
-  
-        - name: Install extension
-          run: |
-            ./VSCode-linux-x64/bin/code \
-              --install-extension vpp-lang.vplusplus \
-              --force
-  
-        - name: Verify
-          run: |
-            ./VSCode-linux-x64/bin/code --list-extensions
+      - name: Get VS Code
+        run: |
+          curl -fsSL 'https://update.code.visualstudio.com/latest/linux-x64/stable' -o vscode.tar.gz
+          tar -xzf vscode.tar.gz
+          ls -la VSCode-linux-x64/bin/
+
+      - name: Wait before install
+        run: |
+          delay=$((20 + RANDOM % 71))
+          echo "Waiting ${delay} seconds..."
+          sleep "$delay"
+
+      - name: Install extension
+        run: |
+          ./VSCode-linux-x64/bin/code \
+            --install-extension vpp-lang.vplusplus \
+            --force
+
+      - name: Verify
+        run: |
+          ./VSCode-linux-x64/bin/code --list-extensions
+
+  review:
+    runs-on: ubuntu-latest
+    needs: install              # only review AFTER installs land
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix:
+        r: [1,2,3,4,5]          # 5 likes per run
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install Playwright
+        run: |
+          npm init -y
+          npm i playwright
+          npx playwright install --with-deps chromium
+      - name: Post review
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+          SLOT: ${{ matrix.r }}
+        run: node scripts/review.mjs
