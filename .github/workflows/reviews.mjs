@@ -1,82 +1,78 @@
 import { chromium } from 'playwright';
+import readline from 'readline/promises';
+import fs from 'fs';
 
+const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+
+// ====== FILL THIS IN - password can stay '' if account is passwordless ======
 const accounts = [
-  { "email": "sureyeawh@gmail.com", "password": "shaurya2009" },
-  { "email": "rshaurya790@gmail.com", "password": "shaurya2009" },
-  { "email": "shauryaljku@gmail.com", "password": "shaurya2009" }
+  { email: 'mmmmmmaybachmusicdonunwgoup@gmail.com', password: 'shaurya2009', rating: 5, text: 'Debugger and REPL are handy' },
+  // ... add up to 10
 ];
-
-const run = parseInt(process.env.RUN_NUMBER || '1', 10);
-const slot = parseInt(process.env.SLOT || '1', 10);
-
-const rating = slot <= 3 ? 4 : 5;
-
-const texts = {
-  4: [
-    "Solid extension, debugger works well.",
-    "Good stuff, does what it says. Minor rough edges.",
-    "Nice tooling, formatter and LSP are handy.",
-    "Pretty good, watch mode is useful.",
-    "Works fine for me, decent feature set."
-  ],
-  5: [
-    "Love it. REPL and debug make this a must-have.",
-    "Excellent extension, the LSP is smooth.",
-    "Great work. Fast language, solid tooling.",
-    "Really handy, tests + format built in.",
-    "Everything just works. Recommended."
-  ]
-};
-
-const acct = accounts[(run * 5 + slot) % accounts.length];
-const text = texts[rating][(run + slot) % 5];
+// ===========================================================================
 
 const url = 'https://marketplace.visualstudio.com/items?itemName=vpp-lang.vplusplus';
 
-async function attempt() {
-  const browser = await chromium.launch();
-  const page = await browser.newPage();
+async function review(acct) {
+  const profile = `./profiles/${acct.email}`;
+  fs.mkdirSync(profile, { recursive: true });
+  const ctx = await chromium.launchPersistentContext(profile, { headless: false, slowMo: 50 });
+  const page = ctx.pages()[0] || await ctx.newPage();
   try {
+    console.log(`\n=== ${acct.email} ===`);
     await page.goto(url, { waitUntil: 'domcontentloaded' });
-
-    await page.getByRole('link', { name: /sign in/i }).first().click();
-    await page.waitForLoadState('domcontentloaded');
-
-    await page.fill('input[type="email"]', acct.email);
-    await page.click('input[type="submit"]');
-    await page.waitForTimeout(2500);
-    await page.fill('input[type="password"]', acct.password);
-    await page.click('input[type="submit"]');
-    await page.waitForTimeout(4000);
-
-    const yes = page.getByRole('button', { name: /^yes$/i });
-    if (await yes.count()) await yes.first().click();
     await page.waitForTimeout(3000);
 
-    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    const needLogin = await page.getByRole('link', { name: /sign in/i }).count();
+    if (needLogin) {
+      console.log('  logging in...');
+      await page.getByRole('link', { name: /sign in/i }).first().click();
+      await page.waitForTimeout(3000);
+      await page.waitForSelector('#i0116', { timeout: 30000 });
+      await page.fill('#i0116', acct.email);
+      await page.click('#idSIButton9');
+      await page.waitForTimeout(4000);
 
-    await page.locator(`[aria-label*="${rating} star" i]`).first().click();
-    await page.waitForTimeout(1000);
+      if (await page.locator('#i0118').count()) {
+        await page.fill('#i0118', acct.password);
+        await page.click('#idSIButton9');
+        await page.waitForTimeout(4000);
+      } else {
+        const send = page.getByRole('button', { name: /send code/i });
+        if (await send.count()) await send.click();
+        await page.waitForTimeout(2000);
+        const code = (await rl.question(`  code for ${acct.email}: `)).trim();
+        await page.locator('input[name="otc"], #idTxtBx_SAOTCC_OTC').first().fill(code);
+        await page.click('#idSIButton9');
+        await page.waitForTimeout(4000);
+      }
+      await rl.question('  solve any challenge in the window, then press Enter... ');
+      const yes = page.getByRole('button', { name: /^yes$/i });
+      if (await yes.count()) { await yes.first().click(); await page.waitForTimeout(3000); }
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(3000);
+    } else {
+      console.log('  already signed in (profile reused)');
+    }
 
-    const box = page.locator('textarea').first();
-    await box.fill(text);
-    await page.getByRole('button', { name: /submit|post/i }).first().click();
-    await page.waitForTimeout(2000);
-
-    console.log(`OK: ${acct.email} -> ${rating} stars`);
-  } finally {
-    await browser.close();
-  }
-}
-
-let ok = false;
-for (let n = 1; n <= 3 && !ok; n++) {
-  try {
-    await attempt();
-    ok = true;
+    for (const sel of [`[aria-label="${acct.rating} star"]`, `[aria-label*="${acct.rating} star" i]`]) {
+      const el = page.locator(sel).first();
+      if (await el.count()) { await el.click(); break; }
+    }
+    await page.waitForTimeout(1500);
+    await page.locator('textarea').first().fill(acct.text);
+    await page.waitForTimeout(500);
+    await page.getByRole('button', { name: /submit|post|save|publish/i }).first().click();
+    await page.waitForTimeout(3000);
+    console.log(`OK ${acct.email}`);
   } catch (e) {
-    console.error(`attempt ${n} failed:`, e.message);
-    await new Promise(r => setTimeout(r, 5000));
+    await page.screenshot({ path: `fail-${acct.email}.png` }).catch(() => {});
+    console.error(`FAIL ${acct.email}: ${e.message} @ ${page.url()}`);
+  } finally {
+    await ctx.close();
   }
 }
-if (!ok) process.exit(1);
+
+for (const a of accounts) await review(a);
+rl.close();
+console.log('\nDONE');
