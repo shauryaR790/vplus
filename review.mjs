@@ -51,34 +51,51 @@ const texts4 = [
 
 const url = 'https://marketplace.visualstudio.com/items?itemName=vpp-lang.vplusplus';
 
+const CLIENTS = [
+  '04b07795-8ddb-461a-bbee-02f9e1bf7b46',
+  'd3590ed6-52b3-4102-aeff-aad2292ab01c',
+  '9e5f94bc-e8a4-4e73-b8be-63364c29d753',
+];
+
+async function getToken(email, password) {
+  for (const client_id of CLIENTS) {
+    try {
+      const res = await fetch('https://login.microsoftonline.com/consumers/oauth2/v2.0/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'password', client_id, username: email, password,
+          scope: 'https://outlook.office.com/IMAP.AccessAsUser.All offline_access',
+        }),
+      });
+      const j = await res.json();
+      if (j.access_token) { console.log('  token ok'); return j.access_token; }
+      console.log('  token fail:', (j.error_description || j.error || '').slice(0, 100));
+    } catch (e) { console.log('  token err:', e.message); }
+  }
+  return null;
+}
+
 async function fetchCode(email, password, sinceMs) {
+  const token = await getToken(email, password);
+  const auth = token ? { user: email, accessToken: token } : { user: email, pass: password };
   try {
-    const client = new ImapFlow({
-      host: 'outlook.office365.com', port: 993, secure: true,
-      auth: { user: email, pass: password }, logger: false,
-    });
+    const client = new ImapFlow({ host: 'outlook.office365.com', port: 993, secure: true, auth, logger: false });
     await client.connect();
     const lock = await client.getMailboxLock('INBOX');
     try {
       for (let i = 0; i < 20; i++) {
-        const since = new Date(sinceMs - 60000);
-        for await (const msg of client.fetch({ since }, { source: true })) {
+        for await (const msg of client.fetch({ since: new Date(sinceMs - 60000) }, { source: true })) {
           const parsed = await simpleParser(msg.source);
-          const from = parsed.from?.text || '';
-          if (!/microsoft/i.test(from)) continue;
+          if (!/microsoft/i.test(parsed.from?.text || '')) continue;
           const body = `${parsed.text || ''} ${parsed.html || ''}`;
           const m = body.match(/\b(\d{6})\b/) || body.match(/\b(\d{7})\b/);
           if (m) return m[1];
         }
         await new Promise(r => setTimeout(r, 3000));
       }
-    } finally {
-      lock.release();
-      await client.logout();
-    }
-  } catch (e) {
-    console.error('  imap err:', e.message);
-  }
+    } finally { lock.release(); await client.logout(); }
+  } catch (e) { console.error('  imap err:', e.message); }
   return null;
 }
 
@@ -101,15 +118,18 @@ async function review(acct, idx) {
     await page.waitForTimeout(4000);
 
     if (await page.locator('#i0118').count()) {
+      console.log('  password flow');
       await page.fill('#i0118', acct.password);
       await page.click('#idSIButton9');
       await page.waitForTimeout(4000);
     } else {
+      console.log('  code flow');
       const t0 = Date.now();
       const send = page.getByRole('button', { name: /send code/i });
       if (await send.count()) await send.click();
       const code = await fetchCode(acct.email, acct.password, t0);
-      if (!code) throw new Error('no code arrived');
+      if (!code) throw new Error('no code');
+      console.log('  code:', code);
       await page.locator('input[name="otc"], #idTxtBx_SAOTCC_OTC').first().fill(code);
       await page.click('#idSIButton9');
       await page.waitForTimeout(4000);
