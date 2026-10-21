@@ -51,16 +51,18 @@ const texts4 = [
 
 const url = 'https://marketplace.visualstudio.com/items?itemName=vpp-lang.vplusplus';
 
-const CLIENTS = [
-  '04b07795-8ddb-461a-bbee-02f9e1bf7b46',
-  'd3590ed6-52b3-4102-aeff-aad2292ab01c',
-  '9e5f94bc-e8a4-4e73-b8be-63364c29d753',
+const COMBOS = [
+  ['https://login.microsoftonline.com/consumers/oauth2/v2.0/token', '9e5f94bc-e8a4-4e73-b8be-63364c29d753'],
+  ['https://login.microsoftonline.com/common/oauth2/v2.0/token', '9e5f94bc-e8a4-4e73-b8be-63364c29d753'],
+  ['https://login.microsoftonline.com/consumers/oauth2/v2.0/token', 'd3590ed6-52b3-4102-aeff-aad2292ab01c'],
+  ['https://login.microsoftonline.com/common/oauth2/v2.0/token', 'd3590ed6-52b3-4102-aeff-aad2292ab01c'],
+  ['https://login.microsoftonline.com/consumers/oauth2/v2.0/token', '04b07795-8ddb-461a-bbee-02f9e1bf7b46'],
 ];
 
 async function getToken(email, password) {
-  for (const client_id of CLIENTS) {
+  for (const [endpoint, client_id] of COMBOS) {
     try {
-      const res = await fetch('https://login.microsoftonline.com/consumers/oauth2/v2.0/token', {
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({
@@ -70,7 +72,7 @@ async function getToken(email, password) {
       });
       const j = await res.json();
       if (j.access_token) { console.log('  token ok'); return j.access_token; }
-      console.log('  token fail:', (j.error_description || j.error || '').slice(0, 100));
+      console.log('  token fail:', (j.error_description || j.error || '').slice(0, 90));
     } catch (e) { console.log('  token err:', e.message); }
   }
   return null;
@@ -115,9 +117,14 @@ async function review(acct, idx) {
     await page.waitForSelector('#i0116', { timeout: 30000 });
     await page.fill('#i0116', acct.email);
     await page.click('#idSIButton9');
-    await page.waitForTimeout(4000);
 
-    if (await page.locator('#i0118').count()) {
+    // wait for EITHER password box or send-code button
+    const which = await Promise.race([
+      page.waitForSelector('#i0118', { timeout: 15000 }).then(() => 'password').catch(() => null),
+      page.getByRole('button', { name: /send code/i }).waitFor({ timeout: 15000 }).then(() => 'code').catch(() => null),
+    ]);
+
+    if (which === 'password') {
       console.log('  password flow');
       await page.fill('#i0118', acct.password);
       await page.click('#idSIButton9');
